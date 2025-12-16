@@ -67,10 +67,14 @@
 ### 软件依赖
 
 ```bash
+# CPU服务器免密GPU节点
+- CPU 免密➡️ GPU
+- GPU 之间全免密
 # 必需组件
 - NVIDIA HPC-X (包含 ClusterKit)
 - NVIDIA Driver & CUDA
 - Mellanox OFED (MLNX_OFED 或 DOCA OFED)
+- GPU 节点安装 numactl
 
 # IB 模式额外要求
 - opensm (Subnet Manager)
@@ -80,7 +84,7 @@
 - lldpd (LLDP daemon，用于交换机发现)
 
 # 健康检查要求
-- mstflint (mlxlink 工具)
+- mstflint (mlxlink 工具, 版本要求：mlxlink, mft 4.30.1-113)
 ```
 
 ### 运行环境
@@ -101,8 +105,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-org/clusterkit.git
-cd clusterkit
+git clone https://github.com/wuchanghui5220/ck-bench.git
+cd ck-bench
 
 # 配置 hostfile（每行一个 IP 地址或主机名）
 cat > hostfile.txt << EOF
@@ -111,8 +115,8 @@ cat > hostfile.txt << EOF
 10.0.10.3
 EOF
 
-# 确保 HPC-X 已安装
-export HPCX_HOME=/opt/hpcx-v2.21.3-gcc-doca_ofed-ubuntu22.04-cuda12-x86_64
+# 确保 GPU节点 HPC-X 已安装
+export HPCX_HOME=/opt/hpcx-v2.25.1-gcc-doca_ofed-ubuntu22.04-cuda12-x86_64
 
 # 赋予执行权限
 chmod +x ck-bench.sh
@@ -253,8 +257,6 @@ gpu-1           GPU4   mlx5_gdr_5 enp156s0np0    FHGigabitEthernet 0/33     B03-
 gpu-1           GPU5   mlx5_gdr_6 enp188s0np0    FHGigabitEthernet 0/33     B04-44U-C-Leaf-002
 gpu-1           GPU6   mlx5_gdr_7 enp204s0np0    FHGigabitEthernet 0/33     B05-44U-C-Leaf-003
 gpu-1           GPU7   mlx5_gdr_8 enp220s0np0    FHGigabitEthernet 0/33     B08-44U-C-Leaf-004
-gpu-2           GPU0   mlx5_gdr_1 eth0           FHGigabitEthernet 0/34     B11-44U-C-Leaf-007
-gpu-2           GPU7   mlx5_gdr_8 bond1          Down                       LINK_DOWN
 ==========================================
 ```
 
@@ -303,30 +305,99 @@ gpu-2           GPU7   mlx5_gdr_8 bond1          Down                       LINK
 
 **输出示例：**
 ```
+root@cpu:/x# HCA_LIST='mlx5_gdr_1,mlx5_gdr_2,mlx5_gdr_3,mlx5_gdr_4,mlx5_gdr_5,mlx5_gdr_6,mlx5_gdr_7,mlx5_gdr_8'
+root@cpu:/x# ./ck-bench.sh --network-mode roce --check-health-only -f hostfile.txt.4  --hca_list $HCA_LIST
+
 ==========================================
-Network Health Check Summary
+Health Check Only Mode (Single Check)
 ==========================================
 
-Overall Status: ✓ 22/22 nodes ready
+Checking health status on all nodes (no retry)...
 
-Node Details:
-  gpu-1    : ✓ Ready - All HCAs up (8/8)
-  gpu-2    : ✗ Error - mlx5_gdr_8: Link Down
-  gpu-3    : ⚠ Warning - mlx5_gdr_3: High error count
-  gpu-4    : ✓ Ready - All HCAs up (8/8)
-  ...
+Checking 4 nodes...
 
-Detailed Status:
-  gpu-2 mlx5_gdr_8:
-    Status: Down
-    Speed: N/A
-    Errors: Physical=0, LinkDown=1, Recovery=0
-
-  gpu-3 mlx5_gdr_3:
-    Status: Up
-    Speed: 200G
-    Errors: Physical=245, LinkDown=0, Recovery=3
 ==========================================
+Health Check Results: 4/4 nodes healthy
+==========================================
+----------------------------------------
+Host            SSH    IB         GPU
+----------------------------------------
+10.20.2.33      ✓      ✓ (8)      ✓
+10.20.2.34      ✓      ✓ (8)      ✓
+10.20.2.35      ✓      ✓ (8)      ✓
+10.20.2.36      ✓      ✓ (8)      ✓
+----------------------------------------
+
+
+==========================================
+Checking PCIe Status...
+HCA Filter: mlx5_gdr_1,mlx5_gdr_2,mlx5_gdr_3,mlx5_gdr_4,mlx5_gdr_5,mlx5_gdr_6,mlx5_gdr_7,mlx5_gdr_8
+==========================================
+
+---------------------------------------------------------------
+Host            Interfaces    Status    Details
+---------------------------------------------------------------
+10.20.2.33      8             ✓ PASS  32GT/s/x16/RX:0/TX:0/PASS
+10.20.2.34      8             ✓ PASS  32GT/s/x16/RX:0/TX:0/PASS
+10.20.2.35      8             ✓ PASS  32GT/s/x16/RX:0/TX:0/PASS
+10.20.2.36      8             ✓ PASS  32GT/s/x16/RX:0/TX:0/PASS
+---------------------------------------------------------------
+
+✓ 所有节点 PCIe 状态正常
+
+
+
+==========================================
+Checking Port Error Counters (mlxlink)...
+HCA Filter: mlx5_gdr_1,mlx5_gdr_2,mlx5_gdr_3,mlx5_gdr_4,mlx5_gdr_5,mlx5_gdr_6,mlx5_gdr_7,mlx5_gdr_8
+==========================================
+
+-----------------------------------------------------------------------
+Host            HCA         PhyErr    LinkDown  ErrRecov  Status
+-----------------------------------------------------------------------
+10.20.2.33      mlx5_gdr_1  0         0         0         ✓ PASS
+10.20.2.33      mlx5_gdr_2  0         0         0         ✓ PASS
+10.20.2.33      mlx5_gdr_3  0         0         0         ✓ PASS
+10.20.2.33      mlx5_gdr_4  0         0         0         ✓ PASS
+10.20.2.33      mlx5_gdr_5  0         0         0         ✓ PASS
+10.20.2.33      mlx5_gdr_6  0         0         0         ✓ PASS
+10.20.2.33      mlx5_gdr_7  0         0         0         ✓ PASS
+10.20.2.33      mlx5_gdr_8  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_1  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_2  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_3  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_4  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_5  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_6  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_7  0         0         0         ✓ PASS
+10.20.2.34      mlx5_gdr_8  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_1  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_2  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_3  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_4  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_5  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_6  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_7  0         0         0         ✓ PASS
+10.20.2.35      mlx5_gdr_8  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_1  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_2  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_3  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_4  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_5  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_6  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_7  0         0         0         ✓ PASS
+10.20.2.36      mlx5_gdr_8  0         0         0         ✓ PASS
+-----------------------------------------------------------------------
+
+✓ 所有节点端口误码正常（全部为0）
+
+
+==========================================
+✓ All nodes healthy!
+==========================================
+Logs saved to:
+  - /x/results/health_check_20251216_184619.log
+  - /x/results/health_check.csv
 ```
 
 ---
@@ -497,7 +568,7 @@ mlx5_gdr_8,1.79,98402.9
          │ SSH
          ↓
 ┌────────────────────────────────┐
-│  GPU Servers (10.0.10.x)       │  计算节点集群
+│  GPU Servers (10.20.2.x)       │  计算节点集群
 │  ┌──────────┬──────────────┐   │
 │  │ GPU 0-7  │  HCA 0-7     │   │  - HPC-X 安装路径
 │  │          │  (mlx5_gdr_*)│   │  - 临时目录: /tmp/clusterkit/
@@ -522,9 +593,7 @@ mlx5_gdr_8,1.79,98402.9
 | **CPU Server** | `/x/ck-bench.sh` | 主脚本 |
 | **CPU Server** | `/x/hostfile.txt` | 节点列表 |
 | **CPU Server** | `/x/results/` | 测试结果存储 |
-| **GPU Server** | `/tmp/clusterkit/` | 运行时临时目录 |
-| **GPU Server** | `/tmp/hpcx-*/` | HPC-X 安装目录 |
-| **GPU Server** | `/tmp/topo_*.sh` | 拓扑收集临时脚本 |
+| **GPU Server** | `/opt/hpcx-*/` | HPC-X 安装目录 |
 
 ### GPU-HCA 自动映射
 
@@ -695,18 +764,18 @@ ssh 10.0.10.1 "ibdev2netdev"
 **解决方案：**
 ```bash
 # 检查 lldpd 服务状态
-ssh 10.0.10.1 "systemctl status lldpd"
+ssh 10.0.20.1 "systemctl status lldpd"
 
 # 启动 lldpd 服务
-ssh 10.0.10.1 "sudo systemctl start lldpd"
-ssh 10.0.10.1 "sudo systemctl enable lldpd"
+ssh 10.0.20.1 "sudo systemctl start lldpd"
+ssh 10.0.20.1 "sudo systemctl enable lldpd"
 
 # 检查 LLDP 邻居信息
-ssh 10.0.10.1 "lldpcli show neighbors"
+ssh 10.0.20.1 "lldpcli show neighbors"
 
 # 如果为空，等待几分钟后重试（LLDP 需要时间）
 sleep 60
-ssh 10.0.10.1 "lldpcli show neighbors"
+ssh 10.0.20.1 "lldpcli show neighbors"
 
 # 交换机端启用 LLDP（参考交换机文档）
 ```
@@ -726,23 +795,23 @@ ssh 10.0.10.1 "lldpcli show neighbors"
 **解决方案：**
 ```bash
 # 检查 SM 状态
-ssh 10.0.10.1 "sminfo"
+ssh 10.0.20.1 "sminfo"
 
 # 检查 ibstat
-ssh 10.0.10.1 "ibstat"
+ssh 10.0.20.1 "ibstat"
 
 # 多子网环境需指定正确的 CA 设备
 ./ck-bench.sh --check-topology --Ca mlx5_4
 
 # 手动测试 ibtracert
-ssh 10.0.10.1 "
+ssh 10.0.20.1 "
   LID=\$(ibstat mlx5_0 | grep 'Base lid' | awk '{print \$3}')
   SM_LID=\$(sminfo --Ca mlx5_0 | grep 'sm lid' | grep -oP '\d+')
   ibtracert --Ca mlx5_0 \$LID \$SM_LID
 "
 
 # 检查网络连通性
-ssh 10.0.10.1 "ibping -C mlx5_0 -L <remote_lid>"
+ssh 10.0.20.1 "ibping -C mlx5_0 -L <remote_lid>"
 ```
 
 #### 5. 网卡显示 Down 状态
@@ -832,13 +901,13 @@ done
 bash -x ./ck-bench.sh --auto-hca -G -cx7 2>&1 | tee debug.log
 
 # 2. 检查远程节点日志
-ssh 10.0.10.1 "dmesg | tail -100"
+ssh 10.0.20.1 "dmesg | tail -100"
 
 # 3. 检查 OFED 日志
-ssh 10.0.10.1 "journalctl -u openibd -n 100 --no-pager"
+ssh 10.0.20.1 "journalctl -u openibd -n 100 --no-pager"
 
 # 4. 检查 HCA 状态
-ssh 10.0.10.1 "
+ssh 10.0.20.1 "
   echo '=== ibstat ==='
   ibstat
   echo '=== ibdev2netdev ==='
@@ -851,11 +920,9 @@ ssh 10.0.10.1 "
 "
 
 # 5. 测试 HPC-X 环境
-ssh 10.0.10.1 "
-  source /tmp/hpcx-*/hpcx-init.sh
+ssh 10.0.20.1 "
+  source /opt/hpcx-*/hpcx-init.sh
   hpcx_load
-  which clusterkit_query
-  clusterkit_query --help
 "
 ```
 
@@ -875,155 +942,6 @@ ssh 10.0.10.1 "
 # 拓扑变更验证
 ./ck-bench.sh --network-mode roce --check-topology > topo_after_change.txt
 diff topo_before_change.txt topo_after_change.txt
-```
-
-### 2. 新集群验收
-
-```bash
-#!/bin/bash
-# acceptance_test.sh - 新集群验收测试流程
-
-HOSTFILE="all_nodes.txt"
-REPORT_DIR="acceptance_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$REPORT_DIR"
-
-echo "步骤 1/4: 拓扑验证..."
-./ck-bench.sh --network-mode roce --check-topology -f "$HOSTFILE" \
-    > "$REPORT_DIR/topology.txt"
-
-echo "步骤 2/4: 健康检查..."
-./ck-bench.sh --network-mode roce --check-health-only -f "$HOSTFILE" \
-    > "$REPORT_DIR/health.txt"
-
-echo "步骤 3/4: 性能测试（Rail-by-Rail）..."
-./ck-bench.sh --rbr -G -cx7 --output-csv -f "$HOSTFILE" \
-    > "$REPORT_DIR/performance.csv"
-
-echo "步骤 4/4: 压力测试（30分钟）..."
-./ck-bench.sh --auto-hca -G -cx7 -z 30 -f "$HOSTFILE" \
-    > "$REPORT_DIR/stress_test.log"
-
-echo "验收测试完成，结果保存在: $REPORT_DIR/"
-```
-
-### 3. 故障定位流程
-
-```bash
-#!/bin/bash
-# troubleshoot.sh - 故障定位标准流程
-
-# 步骤 1: 确定问题范围
-echo "=== 步骤 1: 健康检查 ==="
-./ck-bench.sh --check-health-only -f all_nodes.txt | tee health.log
-
-# 步骤 2: 提取问题节点
-grep "Error\|Warning" health.log | awk '{print $1}' > problem_nodes.txt
-
-# 步骤 3: 检查问题节点拓扑
-echo "=== 步骤 2: 拓扑检查 ==="
-./ck-bench.sh --network-mode roce --check-topology -f problem_nodes.txt \
-    | tee problem_topology.txt
-
-# 步骤 4: 单节点详细测试
-echo "=== 步骤 3: 详细测试 ==="
-head -1 problem_nodes.txt > single_node.txt
-./ck-bench.sh --rbr -G -cx7 -f single_node.txt
-
-# 步骤 5: 对比正常节点
-echo "=== 步骤 4: 对比分析 ==="
-# 手动对比 results/ 目录下的结果
-```
-
-### 4. 性能基线管理
-
-```bash
-#!/bin/bash
-# baseline.sh - 性能基线建立和对比
-
-BASELINE_DIR="baselines"
-mkdir -p "$BASELINE_DIR"
-
-# 建立基线
-echo "建立性能基线..."
-./ck-bench.sh --rbr -G -cx7 --output-csv > "$BASELINE_DIR/baseline_$(date +%Y%m%d).csv"
-
-# 对比分析
-echo "性能对比分析..."
-python3 << 'EOF'
-import pandas as pd
-import sys
-from datetime import datetime
-
-# 读取基线和当前数据
-baseline = pd.read_csv("baselines/baseline_20250101.csv")
-current = pd.read_csv("baselines/baseline_$(date +%Y%m%d).csv")
-
-# 合并数据
-merged = pd.merge(baseline, current, on="Rail", suffixes=("_baseline", "_current"))
-
-# 计算性能变化
-merged["BW_Change_%"] = ((merged["Bandwidth(MB/s)_current"] -
-                          merged["Bandwidth(MB/s)_baseline"]) /
-                         merged["Bandwidth(MB/s)_baseline"] * 100)
-merged["Latency_Change_%"] = ((merged["Latency(usec)_current"] -
-                               merged["Latency(usec)_baseline"]) /
-                              merged["Latency(usec)_baseline"] * 100)
-
-# 输出报告
-print("\n性能对比报告")
-print("=" * 80)
-print(merged.to_string(index=False))
-print("\n异常检测（性能下降 >5%）：")
-print(merged[merged["BW_Change_%"] < -5][["Rail", "BW_Change_%"]])
-EOF
-```
-
-### 5. 批量部署脚本
-
-```bash
-#!/bin/bash
-# deploy.sh - 批量部署到所有节点
-
-CPU_SERVER="root@10.20.4.4"
-REMOTE_DIR="/x"
-
-echo "同步脚本到 CPU 服务器..."
-scp ck-bench.sh "$CPU_SERVER:$REMOTE_DIR/"
-scp hostfile.txt "$CPU_SERVER:$REMOTE_DIR/"
-
-echo "验证部署..."
-ssh "$CPU_SERVER" "cd $REMOTE_DIR && ls -l ck-bench.sh hostfile.txt"
-
-echo "运行快速测试..."
-ssh "$CPU_SERVER" "cd $REMOTE_DIR && ./ck-bench.sh --check-health-only"
-
-echo "部署完成！"
-```
-
-### 6. 结果归档
-
-```bash
-#!/bin/bash
-# archive.sh - 测试结果归档
-
-ARCHIVE_ROOT="/archive/ck-bench"
-YEAR=$(date +%Y)
-MONTH=$(date +%m)
-ARCHIVE_DIR="$ARCHIVE_ROOT/$YEAR/$MONTH"
-
-# 创建归档目录
-mkdir -p "$ARCHIVE_DIR"
-
-# 归档所有结果
-cp -r results/* "$ARCHIVE_DIR/"
-
-# 保留最近 30 天的本地结果
-find results/ -type d -mtime +30 -exec rm -rf {} + 2>/dev/null
-
-# 压缩旧归档（超过 6 个月）
-find "$ARCHIVE_ROOT" -type d -mtime +180 -name "rbr_*" -exec tar -czf {}.tar.gz {} \; -exec rm -rf {} \;
-
-echo "归档完成: $ARCHIVE_DIR"
 ```
 
 ---
@@ -1046,7 +964,7 @@ echo "归档完成: $ARCHIVE_DIR"
 ./ck-bench.sh --auto-hca -G -cx7 -z 30 --loop 5 --auto-reboot --reboot-method ipmi
 
 # 光模块重置（不重启服务器）
-./ck-bench.sh --auto-hca -G -cx7 -z 30 --loop-test 5 --reset-optics
+./ck-bench.sh --auto-hca -G -cx7 -z 30 --loop-test 5 --reset-optics --optics-interval 1
 
 # 自动移除故障节点
 ./ck-bench.sh --auto-hca -G -cx7 -z 30 --loop 10 --auto-reboot --auto-remove-bad-nodes --min-nodes 4
@@ -1143,19 +1061,6 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ---
 
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-### 贡献指南
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/your-feature`)
-3. 在真实 GPU 集群上测试您的更改
-4. 提交更改 (`git commit -am 'Add new feature'`)
-5. 推送到分支 (`git push origin feature/your-feature`)
-6. 创建 Pull Request
-
 ### 代码规范
 
 - 遵循现有的 Bash 脚本规范
@@ -1239,9 +1144,3 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - ✅ 循环测试功能
 
 ---
-
-**⭐ 如果这个项目对您有帮助，请给个 Star！**
-
-**📧 问题反馈：** [提交 Issue](https://github.com/your-org/clusterkit/issues)
-
-**💬 技术讨论：** [加入社区](https://github.com/your-org/clusterkit/discussions)
